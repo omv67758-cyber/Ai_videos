@@ -21,11 +21,22 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y unzip rsync
 
-      - name: Extract corrected project
+      - name: Extract final project ZIP
         run: |
-          unzip -q text-to-video-ai-corrected.zip -d extracted
+          test -f text-to-video-ai-final.zip
+          rm -rf extracted
+          mkdir extracted
+          unzip -q text-to-video-ai-final.zip -d extracted
           ROOT=$(find extracted -mindepth 1 -maxdepth 1 -type d | head -n 1)
+          test -n "$ROOT"
           rsync -a "$ROOT"/ ./ --exclude ".git" --exclude ".github"
+
+      - name: Verify Expo project files
+        run: |
+          test -f app.config.ts
+          test -f eas.json
+          grep -q 'aivideocomplex' app.config.ts
+          grep -q 'aab248c0-84b4-444d-8943-fc8a2f3d5c0e' app.config.ts
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
@@ -33,14 +44,10 @@ jobs:
       - name: Install EAS CLI
         run: npm install -g eas-cli@latest --no-audit --no-fund
 
-      - name: Verify Expo config
+      - name: Verify Expo configuration
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: |
-          test -f app.config.ts
-          test -f eas.json
-          npx expo config --json > expo-config.json
-          echo "Expo config OK"
+        run: npx expo config --json > expo-config.json
 
       - name: Build Android APK
         env:
