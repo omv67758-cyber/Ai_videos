@@ -37,10 +37,10 @@ jobs:
       - name: Install EAS CLI
         run: npm install -g eas-cli@latest --no-audit --no-fund
 
-      - name: Create or link Expo project
+      - name: Link existing Expo project
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: eas init --non-interactive --force
+        run: eas init --id aab248c0-84b4-444d-8943-fc8a2f3d5c0e --force --non-interactive
 
       - name: Create APK configuration
         run: |
