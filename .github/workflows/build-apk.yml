@@ -1,4 +1,4 @@
-name: Build APK
+name: Build Android APK
 
 on:
   workflow_dispatch:
@@ -8,48 +8,43 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Extract project ZIP
+        run: |
+          ZIP=$(find . -maxdepth 1 -type f \( -name "text-to-video-ai-final.zip" -o -name "text-to-video-ai-final.zip.zip" \) | head -1)
+          test -n "$ZIP"
+          mkdir extracted
+          unzip -q "$ZIP" -d extracted
+
+          if [ -f extracted/app.config.ts ]; then
+            cp -r extracted/. .
+          else
+            ROOT=$(find extracted -name app.config.ts -printf '%h\n' | head -1)
+            cp -r "$ROOT"/. .
+          fi
+
+      - name: Verify Expo files
+        run: |
+          test -f app.config.ts
+          test -f package.json
+          test -d app
+          echo "Expo project detected successfully"
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-
-      - name: Install unzip tools
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y unzip rsync
-
-      - name: Extract final project ZIP
-        run: |
-          test -f text-to-video-ai-final.zip
-          rm -rf extracted
-          mkdir extracted
-          unzip -q text-to-video-ai-final.zip -d extracted
-          ROOT=$(find extracted -mindepth 1 -maxdepth 1 -type d | head -n 1)
-          test -n "$ROOT"
-          rsync -a "$ROOT"/ ./ --exclude ".git" --exclude ".github"
-
-      - name: Verify Expo project files
-        run: |
-          test -f app.config.ts
-          test -f eas.json
-          grep -q 'aivideocomplex' app.config.ts
-          grep -q 'aab248c0-84b4-444d-8943-fc8a2f3d5c0e' app.config.ts
+          node-version: 20
+          cache: npm
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm install
 
-      - name: Install EAS CLI
-        run: npm install -g eas-cli@latest --no-audit --no-fund
+      - name: Setup EAS
+        run: npm install --global eas-cli
 
-      - name: Verify Expo configuration
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: npx expo config --json > expo-config.json
-
-      - name: Build Android APK
+      - name: Build APK
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: eas build --platform android --profile preview --non-interactive --no-wait
