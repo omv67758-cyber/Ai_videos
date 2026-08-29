@@ -11,26 +11,44 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract project ZIP
+      - name: Extract ZIP safely
+        shell: bash
         run: |
-          ZIP=$(find . -maxdepth 1 -type f \( -name "text-to-video-ai-final.zip" -o -name "text-to-video-ai-final.zip.zip" \) | head -1)
+          set -e
+
+          ZIP=$(find . -maxdepth 1 -type f \( \
+            -name "text-to-video-ai-final.zip" \
+            -o -name "text-to-video-ai-final.zip.zip" \
+          \) | head -1)
+
           test -n "$ZIP"
+          rm -rf extracted
           mkdir extracted
           unzip -q "$ZIP" -d extracted
 
-          if [ -f extracted/app.config.ts ]; then
-            cp -r extracted/. .
-          else
-            ROOT=$(find extracted -name app.config.ts -printf '%h\n' | head -1)
-            cp -r "$ROOT"/. .
+          ROOT="extracted"
+          if [ ! -f "$ROOT/app.config.ts" ]; then
+            ROOT=$(find extracted -type f -name app.config.ts -printf '%h\n' | head -1)
           fi
+
+          test -f "$ROOT/app.config.ts"
+          test -f "$ROOT/package.json"
+
+          rsync -a \
+            --exclude='.manus/' \
+            --exclude='.git/' \
+            --exclude='.expo/' \
+            --exclude='node_modules/' \
+            --exclude='dist/' \
+            "$ROOT"/ ./
+
+          echo "Expo project extracted successfully"
 
       - name: Verify Expo files
         run: |
           test -f app.config.ts
           test -f package.json
           test -d app
-          echo "Expo project detected successfully"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -41,7 +59,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Setup EAS
+      - name: Install EAS
         run: npm install --global eas-cli
 
       - name: Build APK
