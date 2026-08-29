@@ -4,66 +4,123 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build_android:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract ZIP safely
+      - name: Find and extract project ZIP
         shell: bash
         run: |
           set -e
 
-          ZIP=$(find . -maxdepth 1 -type f \( \
+          ZIP_FILE=$(find . -maxdepth 1 -type f \( \
             -name "text-to-video-ai-final.zip" \
             -o -name "text-to-video-ai-final.zip.zip" \
-          \) | head -1)
+          \) | head -n 1)
 
-          test -n "$ZIP"
-          rm -rf extracted
-          mkdir extracted
-          unzip -q "$ZIP" -d extracted
-
-          ROOT="extracted"
-          if [ ! -f "$ROOT/app.config.ts" ]; then
-            ROOT=$(find extracted -type f -name app.config.ts -printf '%h\n' | head -1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ZIP file not found"
+            ls -la
+            exit 1
           fi
 
-          test -f "$ROOT/app.config.ts"
-          test -f "$ROOT/package.json"
+          echo "Using ZIP: $ZIP_FILE"
 
+          rm -rf extracted
+          mkdir -p extracted
+
+          unzip -q "$ZIP_FILE" -d extracted
+
+          if [ -f "extracted/app.config.ts" ]; then
+            PROJECT_ROOT="extracted"
+          else
+            PROJECT_ROOT=$(find extracted \
+              -type f \
+              -name "app.config.ts" \
+              -printf "%h\n" | head -n 1)
+          fi
+
+          if [ -z "$PROJECT_ROOT" ]; then
+            echo "app.config.ts not found inside ZIP"
+            find extracted -maxdepth 3 -type f | head -100
+            exit 1
+          fi
+
+          echo "Project root: $PROJECT_ROOT"
+
+          if [ ! -f "$PROJECT_ROOT/package.json" ]; then
+            echo "package.json not found"
+            exit 1
+          fi
+
+          # Existing GitHub/Manus files को overwrite नहीं करेंगे
           rsync -a \
-            --exclude='.manus/' \
-            --exclude='.git/' \
-            --exclude='.expo/' \
-            --exclude='node_modules/' \
-            --exclude='dist/' \
-            "$ROOT"/ ./
+            --exclude=".git/" \
+            --exclude=".manus/" \
+            --exclude=".expo/" \
+            --exclude="node_modules/" \
+            --exclude="dist/" \
+            --exclude=".env" \
+            "$PROJECT_ROOT"/ ./
 
-          echo "Expo project extracted successfully"
+          echo "Project extracted successfully"
 
-      - name: Verify Expo files
+      - name: Verify Expo project
+        shell: bash
         run: |
-          test -f app.config.ts
+          set -e
+
           test -f package.json
+          test -f app.config.ts
           test -d app
 
-      - name: Setup Node
+          echo "package.json found"
+          echo "app.config.ts found"
+          echo "app folder found"
+
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+
+      - name: Enable pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.12.0 --activate
+          pnpm --version
 
       - name: Install dependencies
-        run: npm install
+        shell: bash
+        run: |
+          pnpm install --frozen-lockfile
 
-      - name: Install EAS
-        run: npm install --global eas-cli
+      - name: Expo configuration check
+        shell: bash
+        run: |
+          npx expo config --type public
 
-      - name: Build APK
+      - name: TypeScript check
+        shell: bash
+        run: |
+          npx tsc --noEmit
+
+      - name: Install EAS CLI
+        shell: bash
+        run: |
+          npm install --global eas-cli
+
+      - name: Build Android APK
+        shell: bash
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: eas build --platform android --profile preview --non-interactive --no-wait
-        
+        run: |
+          eas build \
+            --platform android \
+            --profile preview \
+            --non-interactive \
+            --no-wait
+            
